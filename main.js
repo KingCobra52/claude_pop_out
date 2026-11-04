@@ -373,6 +373,21 @@ function createAppMenu() {
   );
 }
 
+// ---------- launcher hotkey via AeroSpace ----------
+// ~/.aerospace.toml:
+//   alt-space = 'exec-and-forget pkill -USR2 -x "Claude Float" || open -g -a "Claude Float"'
+// Running → SIGUSR2 toggles us. Not running → launched in the background.
+// (SIGUSR1 is reserved by Node for the inspector.)
+function aerospaceOwnsHotkey() {
+  try {
+    const cfg = fs.readFileSync(path.join(app.getPath('home'), '.aerospace.toml'), 'utf8');
+    return /^\s*alt-space\s*=.*pkill -USR2 -x "Claude Float"/m.test(cfg);
+  } catch {
+    return false;
+  }
+}
+process.on('SIGUSR2', () => win && toggle('signal'));
+
 // ---------- lifecycle ----------
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -385,7 +400,11 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     followWorkspaces();
-    if (!globalShortcut.register(HOTKEY, () => toggle('hotkey'))) {
+    // If AeroSpace owns Option+Space (so the key can also launch the app
+    // after a quit), it toggles us with SIGUSR2; don't register it twice.
+    if (aerospaceOwnsHotkey()) {
+      trace('hotkey:aerospace');
+    } else if (!globalShortcut.register(HOTKEY, () => toggle('hotkey'))) {
       trace('hotkey:register-failed');
       console.error(`Could not register ${HOTKEY}; is another app holding it?`);
     }
