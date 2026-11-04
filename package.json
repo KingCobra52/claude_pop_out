@@ -4,9 +4,12 @@
   "description": "Floating Claude window",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "trace": "CLAUDE_FLOAT_TRACE=1 electron .",
+    "package": "electron-packager . \"Claude Float\" --platform=darwin --arch=arm64 --out=dist --overwrite --app-bundle-id=com.electron.claude-float --extend-info=extend-info.plist --ignore=\"^/dist\" --ignore=\"^/Claude Float-darwin\" --ignore=\"^/\\.claude\" && rm -rf \"/Applications/Claude Float.app\" && cp -R \"dist/Claude Float-darwin-arm64/Claude Float.app\" /Applications/"
   },
   "devDependencies": {
-    "electron": "33.2.0"
+    "@electron/packager": "20.3.0",
+    "electron": "45.2.2"
   }
 }

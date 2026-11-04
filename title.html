@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'" />
+    <style>
+      :root { --bg: #faf9f5; --grip: rgba(0, 0, 0, 0.18); }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #262624; --grip: rgba(255, 255, 255, 0.2); }
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        overflow: hidden;
+        cursor: default;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-app-region: drag;
+      }
+      body { display: flex; align-items: center; justify-content: center; }
+      .grip { width: 36px; height: 5px; border-radius: 3px; background: var(--grip); }
+    </style>
+  </head>
+  <body><div class="grip"></div></body>
+</html>
