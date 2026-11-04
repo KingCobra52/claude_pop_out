@@ -1,8 +1,7 @@
-const { app, BrowserWindow, globalShortcut, shell } = require('electron');
-const { execFile } = require('child_process');
+const { app, BrowserWindow, shell } = require('electron');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 
-const SHORTCUT = 'Alt+Space';
 const URL = 'https://claude.ai/new';
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -11,9 +10,8 @@ const AEROSPACE = ['/opt/homebrew/bin/aerospace', '/usr/local/bin/aerospace'].fi
   fs.existsSync(p)
 );
 
+const startedAt = Date.now();
 let win = null;
-let followTimer = null;
-let aeroId = null;
 
 function aero(args) {
   return new Promise((resolve) => {
@@ -33,21 +31,46 @@ async function findAeroWindowId() {
   return null;
 }
 
-async function startAerospace() {
-  if (!AEROSPACE) return;
-  aeroId = await findAeroWindowId();
+// Floating is handled by an on-window-detected rule in ~/.aerospace.toml.
+// To follow workspace switches with minimal lag, keep one long-lived
+// `aerospace subscribe` process and move the window the instant an event arrives.
+let aeroId = null;
+
+async function moveToWorkspace(ws) {
+  if (!ws) return;
+  if (!aeroId) aeroId = await findAeroWindowId();
   if (!aeroId) return;
-  await aero(['layout', '--window-id', aeroId, 'floating']);
-  followTimer = setInterval(async () => {
-    const ws = await aero(['list-workspaces', '--focused']);
-    if (ws && aeroId) aero(['move-node-to-workspace', '--window-id', aeroId, ws]);
-  }, 300);
+  const before = aeroId;
+  await new Promise((resolve) =>
+    execFile(AEROSPACE, ['move-node-to-workspace', '--window-id', before, ws], (err) => {
+      if (err) aeroId = null; // stale id (window recreated); re-find next time
+      resolve();
+    })
+  );
 }
 
-function stopAerospace() {
-  clearInterval(followTimer);
-  followTimer = null;
-  aeroId = null;
+async function moveToFocusedWorkspace() {
+  if (AEROSPACE) moveToWorkspace(await aero(['list-workspaces', '--focused']));
+}
+
+function followWorkspaces() {
+  if (!AEROSPACE) return;
+  const sub = spawn(AEROSPACE, ['subscribe', 'focused-workspace-changed']);
+  let buf = '';
+  sub.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      try {
+        if (win && win.isVisible()) moveToWorkspace(JSON.parse(line).workspace);
+      } catch {}
+    }
+  });
+  sub.on('exit', () => setTimeout(followWorkspaces, 1000));
+  process.on('exit', () => sub.kill());
+  app.on('before-quit', () => sub.removeAllListeners('exit'));
 }
 
 function createWindow() {
@@ -92,8 +115,7 @@ function createWindow() {
       win.hide();
     }
   });
-  win.on('show', startAerospace);
-  win.on('hide', stopAerospace);
+  win.on('show', moveToFocusedWorkspace);
 }
 
 function toggle() {
@@ -106,14 +128,17 @@ function toggle() {
 
 app.whenReady().then(() => {
   createWindow();
-  if (!globalShortcut.register(SHORTCUT, toggle)) {
-    console.error(`Failed to register ${SHORTCUT} (already in use?)`);
-  }
+  followWorkspaces();
   toggle();
+});
+
+// Option+Space is bound in AeroSpace to `open -a "Claude Float"`: it launches
+// the app if closed, and re-opening a running app lands here.
+app.on('activate', () => {
+  if (win && Date.now() - startedAt > 1500) toggle();
 });
 
 app.on('before-quit', () => {
   app.isQuitting = true;
 });
-app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', (e) => e.preventDefault());
